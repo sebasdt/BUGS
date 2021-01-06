@@ -73,7 +73,7 @@ volatile unsigned long LastMicros;
 void IRAM_ATTR isr() {
   portENTER_CRITICAL(&synch);
   //Serial.println("interupt called");
-  if ((long)(micros() - LastMicros) >= 25 * 1000) {
+ if ((micros() - LastMicros) >= 25 * 1000UL) {
     // LastMicros = micros();
     if (digitalRead(encoderButton) == LOW) {
       buttonPressed = true;
@@ -175,10 +175,12 @@ void menuTask(void *pvParameters) {
         case 1://stop all menu tasks exept for music settings menu
           vTaskResume(mMenuTaskHandler);
           vTaskSuspend(menuTaskHandler);
+        //  setBoundaries(0, 2);
           break;
         case 2://stop all menu tasks exept for demo settings menu
           vTaskResume(dMenuTaskHandler);
           vTaskSuspend(menuTaskHandler);
+       //  setBoundaries(0, 2);
           break;
       }
       //vTaskSuspend(menuTaskHandler);
@@ -205,6 +207,7 @@ void dMenuTask(void *pvParameters) {
     
     submenu = false;
     Access = true;
+    setBoundaries(0, 2);
     vTaskResume(menuTaskHandler);
     taskYIELD();
     
@@ -229,6 +232,7 @@ void mMenuTask(void *pvParameters) {
     
     submenu = false;
     Access = true;
+    setBoundaries(0, 2);
     vTaskResume(menuTaskHandler);
     taskYIELD();
     
