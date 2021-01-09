@@ -41,18 +41,17 @@ void setBoundaries(int newMin, int newMax);
    downClick()
 */
 
-const int numOfSettingsBox = 7  ;
-String settings[numOfSettingsBox] = {{"Choose Mode:"}, {"Brightness:"}, {"Back"}, {"Brightness:"}, {"Sensitivity audio:"},  {"Reacts on:"},  {"Back"},
-};
+char *settings[] = {"Choose Mode:", "Brightness:", "Back", "Brightness:", "Sensitivity audio:", "Reacts on:", "Back"
+                   };
+const int numOfSettings = sizeof( settings) / sizeof( char* ) - 1;
 
-const int numOfkeuzes  = 3  ;
-String Keuzes[numOfkeuzes] = {{"Off"}, {"Music"}, {"Demo"}
-};
+char *Keuzes[] = {"Off", "Music", "Demo"
+                 };
+const int numOfKeuzes = sizeof( Keuzes) / sizeof( char* ) - 1;
 
-const int numOfTonen  = 3  ;
-String tonen[numOfTonen] = {{"Low tones"}, {"Middle tones"}, {"High tones"},
-};
-
+char *tonen[] = {"Low tones", "Middle tones", "High tones"
+                };
+const int numOfTonen = sizeof( tonen) / sizeof( char* ) - 1;
 
 typedef struct {
   uint8_t Modus;    //parameter for what mode the led matrix should be in (OFF, MUSIC or DEMO, or 0, 1, 2)
@@ -73,8 +72,7 @@ volatile unsigned long LastMicros;
 void IRAM_ATTR isr() {
   portENTER_CRITICAL(&synch);
   //Serial.println("interupt called");
- if ((micros() - LastMicros) >= 25 * 1000UL) {
-    // LastMicros = micros();
+  if ((micros() - LastMicros) >= 25 * 1000UL) {
     if (digitalRead(encoderButton) == LOW) {
       buttonPressed = true;
       //   xQueueSendFromISR(buttonQueue, &buttonPressed, NULL);
@@ -114,26 +112,28 @@ void setup() {
   xTaskCreatePinnedToCore(mMenuTask, "music Menu Task", 10000, NULL, 1, &mMenuTaskHandler, 1);
   xTaskCreatePinnedToCore(dMenuTask, "demo Menu Task", 10000, NULL, 1, &dMenuTaskHandler, 1);
 }
-
-
-bool encoderButtonClick() {
+bool encoderDisable = false;
+bool Access = true;
+bool submenu = false;
+bool getOUT = false;
+void encoderButtonClick() {
   // bool button;
   // xQueueReceive(encoderQueue, &button, portMAX_DELAY);
   if (buttonPressed) {
+
     buttonPressed = false;
-    if (!settings[parameters.currentScreen].equals("Terug")) {
-      if (ChangeSettings) {
+    if ( strcmp ( settings[parameters.currentScreen] , "Back" )) {   // strcmp() returns 0 if match
+      if (ChangeSettings ) {
         lcd.noBlink();
         ChangeSettings = false;
       } else {
         lcd.blink();
         ChangeSettings = true;
+        Access = true;
       }
 
-    }
-    // return back;
+    } else if (submenu) getOUT = true;
   }
-  return ChangeSettings;
 }
 
 
@@ -142,31 +142,30 @@ void loop() {
   vTaskDelete(nullptr);
 }
 int oldMode;
-bool submenu = false;
-bool Access = true;
+
+
 void menuTask(void *pvParameters) {
-
+  delay(1000);
+  setBoundaries(0, numOfKeuzes);
+  encoder1->setValue(0);
   for (;;) {
-    // vTaskSuspend(dMenuTaskHandler);
-    // vTaskSuspend(mMenuTaskHandler);
-    //  encoderButtonClick();
-
-    if (parameters.encoderValue != parameters.oldCurrentScreen && encoderButtonClick() && !submenu || Access) {
+    encoderButtonClick();
+    if (parameters.encoderValue != parameters.oldCurrentScreen && ChangeSettings && !submenu || Access) {
       Serial.println("im back");
       Access = false;// after setup update the lcd once after that it should only update when ChangeSettings is true
-      if (ChangeSettings) setBoundaries(0, 2);
+      if (ChangeSettings) setBoundaries(0, numOfKeuzes);
       parameters.oldCurrentScreen = parameters.encoderValue;
       parameters.Modus = parameters.encoderValue;
       lcd.clear();
 
-      lcd.print("Choose Mode:");
+      lcd.print(settings[0]);
       delay(10);
       lcd.setCursor(0, 1);
       lcd.print(Keuzes[parameters.Modus]);
       encoderButtonClick();
     }
 
-    if (parameters.Modus != oldMode && parameters.Modus != 0 && !encoderButtonClick()) { //
+    if (parameters.Modus != oldMode && parameters.Modus != 0 && !ChangeSettings) { //
       oldMode = parameters.Modus;
       switch (parameters.Modus) {
         case 0:
@@ -175,12 +174,16 @@ void menuTask(void *pvParameters) {
         case 1://stop all menu tasks exept for music settings menu
           vTaskResume(mMenuTaskHandler);
           vTaskSuspend(menuTaskHandler);
-        //  setBoundaries(0, 2);
+          setBoundaries(0, numOfKeuzes);
+          encoder1->setValue(parameters.Modus);
+          encoderDisable = false;
           break;
         case 2://stop all menu tasks exept for demo settings menu
           vTaskResume(dMenuTaskHandler);
           vTaskSuspend(menuTaskHandler);
-       //  setBoundaries(0, 2);
+          setBoundaries(0, numOfKeuzes);
+          encoder1->setValue(parameters.Modus);
+          encoderDisable = false;
           break;
       }
       //vTaskSuspend(menuTaskHandler);
@@ -190,61 +193,98 @@ void menuTask(void *pvParameters) {
   vTaskDelete(nullptr);
 }
 
-
-
 void dMenuTask(void *pvParameters) {
+  bool firstEntery = true;
   vTaskSuspend(dMenuTaskHandler);
   for (;;) {
     submenu = true;
-    ChangeSettings = false;
-    Serial.println("demo settings menu activated");
-
-    delay(1000);
-    lcd.clear();
-    lcd.print("Demo");
+    if (firstEntery) {
+      Serial.println("demo settings menu activated changing things");
+      ChangeSettings = false;
+      encoder1->setValue(1);
+      parameters.currentScreen = 1;
+    }
     setBoundaries(1, 2);
-    delay(2000);
-    
-    submenu = false;
-    Access = true;
-    setBoundaries(0, 2);
-    vTaskResume(menuTaskHandler);
-    taskYIELD();
-    
-    Serial.println("oh no i need to stop");
-    vTaskSuspend(dMenuTaskHandler);
+    encoderButtonClick();
+
+    if (parameters.encoderValue != parameters.oldCurrentScreen || firstEntery || getOUT) {
+      if (firstEntery) {
+        firstEntery = false;
+        Serial.println("firstEntery deact");
+      }
+      parameters.oldCurrentScreen = parameters.encoderValue;
+      lcd.clear();
+      lcd.print(settings[parameters.currentScreen]);
+
+      if ( !strcmp ( settings[parameters.currentScreen] , "Brightness:" )) {   // strcmp() returns 0 if match
+        Serial.println("IT'S SO BRIGHT");
+      }
+      else if ( !strcmp ( settings[parameters.currentScreen] , "Back" ) && getOUT) {   // strcmp() returns 0A if match
+        getOUT = false;
+        submenu = false;
+        Access = true;
+
+        setBoundaries(0, numOfKeuzes);
+        encoder1->setValue(parameters.Modus);
+
+        vTaskResume(menuTaskHandler);
+        taskYIELD();
+        firstEntery = true;
+        Serial.println("oh no i need to stop");
+        vTaskSuspend(dMenuTaskHandler);
+      }
+    }
   }
   vTaskDelete(nullptr);
 }
 
 void mMenuTask(void *pvParameters) {
+  bool firstEntery = true;
   vTaskSuspend(mMenuTaskHandler);
   for (;;) {
     submenu = true;
-    ChangeSettings = false;
-    Serial.println(" music settings menu activated");
-    
-    delay(1000);
-    lcd.clear();
-    lcd.print("Music");
-    setBoundaries(3, 6);
-    delay(2000);
-    
-    submenu = false;
-    Access = true;
-    setBoundaries(0, 2);
-    vTaskResume(menuTaskHandler);
-    taskYIELD();
-    
-    Serial.println("oh no");
-    vTaskSuspend(mMenuTaskHandler);
+    if (firstEntery) {
+      Serial.println("music settings menu activated changing things");
+      ChangeSettings = false;
+      encoder1->setValue(1);
+      parameters.currentScreen = 1;
+    }
+  setBoundaries(3, 6);
+    encoderButtonClick();
 
+    if (parameters.encoderValue != parameters.oldCurrentScreen || firstEntery || getOUT) {
+      if (firstEntery) {
+        firstEntery = false;
+        Serial.println("firstEntery deact");
+      }
+      parameters.oldCurrentScreen = parameters.encoderValue;
+      lcd.clear();
+      lcd.print(settings[parameters.currentScreen]);
+
+      if ( !strcmp ( settings[parameters.currentScreen] , "Brightness:" )) {   // strcmp() returns 0 if match
+        Serial.println("IT'S SO BRIGHT");
+      } else if ( !strcmp ( settings[parameters.currentScreen] , "Sensitivity audio:" )) {   // strcmp() returns 0 if match
+        Serial.println("ITS SO SENISTIVE");
+      } else if ( !strcmp ( settings[parameters.currentScreen] , "Reacts on:" )) {   // strcmp() returns 0 if match
+        Serial.println("Every byte");
+      } else if ( !strcmp ( settings[parameters.currentScreen] , "Back" ) && getOUT) {   // strcmp() returns 0A if match
+        getOUT = false;
+        submenu = false;
+        Access = true;
+        encoderDisable = true;
+        setBoundaries(0, numOfKeuzes);
+        encoder1->setValue(parameters.Modus);
+
+        vTaskResume(menuTaskHandler);
+        taskYIELD();
+        firstEntery = true;
+        Serial.println("oh no i need to stop");
+        vTaskSuspend(mMenuTaskHandler);
+      }
+    }
   }
   vTaskDelete(nullptr);
 }
-
-
-
 
 
 
@@ -272,7 +312,7 @@ void ESP_ISR callBack(NewEncoder & enc) {
   static int16_t lastReading = 0;
 
   int16_t currentReading = enc;
-  if (currentReading != lastReading) {
+  if (currentReading != lastReading && !encoderDisable) {
     lastReading = currentReading;
     xQueueSendToBackFromISR(encoderQueue, &currentReading, &pxHigherPriorityTaskWoken);
     if (pxHigherPriorityTaskWoken) {
